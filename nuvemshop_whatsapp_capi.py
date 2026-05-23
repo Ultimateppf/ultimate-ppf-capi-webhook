@@ -4,24 +4,24 @@ nuvemshop_whatsapp_capi.py
 ==========================
 Webhook server que recebe eventos de pedido da Nuvemshop (order/created, order/paid),
 detecta pedidos originados via WhatsApp (utm_source=whatsapp) e dispara um evento
-Purchase no Meta Conversions API com atribuiÃ§Ã£o correta ao nÃºmero de WhatsApp.
+Purchase no Meta Conversions API com atribuição correta ao número de WhatsApp.
 
-NÃMEROS MAPEADOS:
-  - utm_content=numero_0324  â  +55 67 9692-0324  (Nuvem Chat / IA)
-  - utm_content=numero_6052  â  +55 67 9646-6052  (vendas manual)
-  - utm_content=numero_6900  â  +55 67 9674-6900  (vendas manual)
+NÚMEROS MAPEADOS:
+  - utm_content=numero_0324  →  +55 67 9692-0324  (Nuvem Chat / IA)
+  - utm_content=numero_6052  →  +55 67 9646-6052  (vendas manual)
+  - utm_content=numero_6900  →  +55 67 9674-6900  (vendas manual)
 
-DEPENDÃNCIAS:
+DEPENDÊNCIAS:
   pip install flask requests
 
 USO:
   python nuvemshop_whatsapp_capi.py
 
-  VariÃ¡veis de ambiente (obrigatÃ³rias):
-    META_PIXEL_ID        â ID do Pixel Meta (ex: 123456789)
-    META_ACCESS_TOKEN    â Token de acesso do Conversions API
-    NUVEMSHOP_SECRET     â Secret do webhook da Nuvemshop (para validaÃ§Ã£o HMAC)
-    PORT                 â Porta do servidor (padrÃ£o: 5001)
+  Variáveis de ambiente (obrigatórias):
+    META_PIXEL_ID        → ID do Pixel Meta (ex: 123456789)
+    META_ACCESS_TOKEN    → Token de acesso do Conversions API
+    NUVEMSHOP_SECRET     → Secret do webhook da Nuvemshop (para validação HMAC)
+    PORT                 → Porta do servidor (padrão: 5001)
 """
 
 import os
@@ -36,9 +36,9 @@ import requests
 from flask import Flask, request, jsonify
 from datetime import datetime
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
-# CONFIGURAÃÃO
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
+# CONFIGURAÇÃO
+# ──────────────────────────────────────────────
 
 PIXEL_ID = os.getenv("META_PIXEL_ID", "SEU_PIXEL_ID_AQUI")
 ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "SEU_ACCESS_TOKEN_AQUI")
@@ -47,33 +47,33 @@ PORT = int(os.getenv("PORT", 5001))
 DB_PATH = os.getenv("DB_PATH", "nuvemshop_events.db")
 TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
 
-# Banco do whatsapp_ctwa_receiver.py â usado para lookup de ctwa_clid
+# Banco do whatsapp_ctwa_receiver.py — usado para lookup de ctwa_clid
 # Deve ser o mesmo arquivo ctwa_store.db usado pelo receiver
 CTWA_DB_PATH = os.getenv("CTWA_DB_PATH", "ctwa_store.db")
 
 CAPI_URL = f"https://graph.facebook.com/v19.0/{PIXEL_ID}/events"
 
-# Mapeamento utm_content â nÃºmero WhatsApp (formato E.164 sem +, 12 dÃ­gitos: 55+DDD+nÃºmero)
-# NOTA: se o WhatsApp armazenar no formato 9 dÃ­gitos (com 9 adicional), use:
-#   0324 â 5567996920324   6052 â 5567996466052   6900 â 5567996746900
+# Mapeamento utm_content → número WhatsApp (formato E.164 sem +, 12 dígitos: 55+DDD+número)
+# NOTA: se o WhatsApp armazenar no formato 9 dígitos (com 9 adicional), use:
+#   0324 → 5567996920324   6052 → 5567996466052   6900 → 5567996746900
 UTM_CONTENT_TO_PHONE = {
-    "numero_0324": "556796920324",  # +55 67 9692-0324 â Nuvem Chat / IA
-    "numero_6052": "556796466052",  # +55 67 9646-6052 â Vendas manual
-    "numero_6900": "556796746900",  # +55 67 9674-6900 â Vendas manual
+    "numero_0324": "556796920324",  # +55 67 9692-0324 — Nuvem Chat / IA
+    "numero_6052": "556796466052",  # +55 67 9646-6052 — Vendas manual
+    "numero_6900": "556796746900",  # +55 67 9674-6900 — Vendas manual
 }
 
-# Mapeamento utm_content â nome legÃ­vel do canal
+# Mapeamento utm_content → nome legível do canal
 UTM_CONTENT_TO_CHANNEL = {
-    "numero_0324": "Nuvem Chat (IA) â 9692-0324",
-    "numero_6052": "Vendas Manual â 9646-6052",
-    "numero_6900": "Vendas Manual â 9674-6900",
+    "numero_0324": "Nuvem Chat (IA) — 9692-0324",
+    "numero_6052": "Vendas Manual — 9646-6052",
+    "numero_6900": "Vendas Manual — 9674-6900",
 }
 
 app = Flask(__name__)
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
-# BANCO DE DADOS (deduplicaÃ§Ã£o)
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
+# BANCO DE DADOS (deduplicação)
+# ──────────────────────────────────────────────
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -117,14 +117,14 @@ def save_event(order_id, event_id, utm_content, phone_channel, value, currency, 
     conn.commit()
     conn.close()
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
-# VALIDAÃÃO HMAC (Nuvemshop)
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
+# VALIDAÇÃO HMAC (Nuvemshop)
+# ──────────────────────────────────────────────
 
 def validate_nuvemshop_signature(payload_bytes: bytes, signature_header: str) -> bool:
     """Valida o X-Linkedstore-Token ou HMAC SHA256 enviado pela Nuvemshop."""
     if not NUVEMSHOP_SECRET or NUVEMSHOP_SECRET == "SEU_SECRET_AQUI":
-        app.logger.warning("NUVEMSHOP_SECRET nÃ£o configurado â pulando validaÃ§Ã£o HMAC")
+        app.logger.warning("NUVEMSHOP_SECRET não configurado — pulando validação HMAC")
         return True  # Em desenvolvimento, aceitar sem validar
     expected = hmac.new(
         NUVEMSHOP_SECRET.encode("utf-8"),
@@ -133,20 +133,20 @@ def validate_nuvemshop_signature(payload_bytes: bytes, signature_header: str) ->
     ).hexdigest()
     return hmac.compare_digest(expected, signature_header or "")
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
-# CTWA ATTRIBUTION â lookup ctwa_clid â fbc
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
+# CTWA ATTRIBUTION — lookup ctwa_clid → fbc
+# ──────────────────────────────────────────────
 
 def lookup_ctwa_clid(customer_phone: str) -> str:
     """
     Busca o ctwa_clid mais recente para o telefone do cliente no banco do
     whatsapp_ctwa_receiver.py (ctwa_store.db).
 
-    O ctwa_clid Ã© gerado quando o cliente clica num anÃºncio CTWA (Click-to-WhatsApp)
-    e enviado ao Meta CAPI como campo `fbc` â isso fecha o loop de atribuiÃ§Ã£o,
-    ligando a compra ao anÃºncio exato que gerou o lead.
+    O ctwa_clid é gerado quando o cliente clica num anúncio CTWA (Click-to-WhatsApp)
+    e enviado ao Meta CAPI como campo `fbc` — isso fecha o loop de atribuição,
+    ligando a compra ao anúncio exato que gerou o lead.
 
-    Retorna o ctwa_clid (string) ou "" se nÃ£o encontrado.
+    Retorna o ctwa_clid (string) ou "" se não encontrado.
     """
     if not customer_phone:
         return ""
@@ -165,14 +165,14 @@ def lookup_ctwa_clid(customer_phone: str) -> str:
         if row and row[0]:
             return row[0]
     except Exception as e:
-        # Banco pode nÃ£o existir ainda (receiver nÃ£o iniciado)
+        # Banco pode não existir ainda (receiver não iniciado)
         if app:
             app.logger.debug(f"ctwa lookup ({customer_phone}): {e}")
     return ""
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
 # HASHING PII (Meta CAPI exige SHA256)
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
 
 def sha256(value: str) -> str:
     if not value:
@@ -180,7 +180,7 @@ def sha256(value: str) -> str:
     return hl.sha256(value.strip().lower().encode("utf-8")).hexdigest()
 
 def format_phone(phone: str) -> str:
-    """Remove tudo que nÃ£o for dÃ­gito e garante formato E.164 sem +"""
+    """Remove tudo que não for dígito e garante formato E.164 sem +"""
     digits = "".join(filter(str.isdigit, phone or ""))
     if digits.startswith("0"):
         digits = digits[1:]
@@ -188,16 +188,16 @@ def format_phone(phone: str) -> str:
         digits = "55" + digits
     return digits
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
-# EXTRAÃÃO DE UTM DO PEDIDO NUVEMSHOP
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
+# EXTRAÇÃO DE UTM DO PEDIDO NUVEMSHOP
+# ──────────────────────────────────────────────
 
 def extract_utm(order: dict) -> dict:
     """
-    Extrai parÃ¢metros UTM do pedido Nuvemshop.
-    LocalizaÃ§Ã£o possÃ­vel:
-      - order["landing_url"] â URL de origem
-      - order["utm_parameters"] â objeto UTM (nem sempre presente)
+    Extrai parâmetros UTM do pedido Nuvemshop.
+    Localização possível:
+      - order["landing_url"] — URL de origem
+      - order["utm_parameters"] — objeto UTM (nem sempre presente)
       - order["referring_url"]
     """
     utm = {
@@ -230,19 +230,19 @@ def extract_utm(order: dict) -> dict:
 
     return utm
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
 # DISPARO META CAPI
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
 
 def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
     """Dispara evento Purchase para o Meta Conversions API."""
 
     order_id = str(order.get("id") or order.get("number") or uuid.uuid4())
-    # Prefixo "wzap_" diferencia do event_id do CAPI nativo da Nuvemshop
-    # (que provavelmente usa apenas o order_id ou "order_<id>").
-    # O Meta sÃ³ desduplicarÃ¡ eventos com event_id IDÃNTICO â prefixos diferentes
-    # garantem que ambos os eventos cheguem ao Meta e sejam complementares.
-    event_id = f"wzap_ctwa_{order_id}"
+    # event_id = order_id puro, IGUAL ao que o CAPI nativo da Nuvemshop usa.
+    # O Meta deduplica eventos com event_id IDÊNTICO: se o mesmo pedido também
+    # gerar um Purchase nativo (site/CAPI Nuvemshop), o Meta conta UMA venda só
+    # — sem dupla marcação. A atribuição CTWA é preservada pelo fbc no user_data.
+    event_id = order_id
 
     # Valor e moeda
     total = float(order.get("total") or order.get("total_price") or 0)
@@ -256,7 +256,7 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
 
     # Telefone do cliente (separado para uso no lookup ctwa_clid)
     customer_phone_raw = format_phone(customer.get("phone") or billing.get("phone") or "")
-    # Para o campo ph: usar telefone do cliente ou, como fallback, o nÃºmero do canal
+    # Para o campo ph: usar telefone do cliente ou, como fallback, o número do canal
     phone_raw = customer_phone_raw or format_phone(phone_number)
 
     first_name = (billing.get("first_name") or customer.get("name") or "").split()[0].lower()
@@ -275,13 +275,13 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
     except Exception:
         event_time = int(time.time())
 
-    # ââ CTWA Attribution: buscar ctwa_clid do cliente ââââââââââââââââââââââââââ
-    # O ctwa_clid Ã© capturado pelo whatsapp_ctwa_receiver.py quando o cliente
-    # clica num anÃºncio CTWA e envia a primeira mensagem no WhatsApp.
-    # Enviado como fbc, ele atribui a venda ao anÃºncio correto no Gerenciador.
+    # ── CTWA Attribution: buscar ctwa_clid do cliente ──────────────────────────
+    # O ctwa_clid é capturado pelo whatsapp_ctwa_receiver.py quando o cliente
+    # clica num anúncio CTWA e envia a primeira mensagem no WhatsApp.
+    # Enviado como fbc, ele atribui a venda ao anúncio correto no Gerenciador.
     ctwa_clid = lookup_ctwa_clid(customer_phone_raw)
     fbc_value = f"fb.1.{int(time.time() * 1000)}.{ctwa_clid}" if ctwa_clid else ""
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ───────────────────────────────────────────────────────────────────────────
 
     # user_data
     user_data = {
@@ -290,7 +290,7 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
         "client_user_agent": "",
     }
     if fbc_value:
-        user_data["fbc"] = fbc_value  # â atribuiÃ§Ã£o CTWA â campo crÃ­tico para ROAS
+        user_data["fbc"] = fbc_value  # ← atribuição CTWA — campo crítico para ROAS
     if email_raw:
         user_data["em"] = [sha256(email_raw)]
     if phone_raw:
@@ -326,7 +326,7 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
     if contents:
         custom_data["contents"] = contents
 
-    # InformaÃ§Ãµes do canal WhatsApp
+    # Informações do canal WhatsApp
     custom_data["whatsapp_channel"] = UTM_CONTENT_TO_CHANNEL.get(utm["utm_content"], utm["utm_content"])
     custom_data["utm_medium"] = utm["utm_medium"]
     custom_data["utm_campaign"] = utm["utm_campaign"]
@@ -359,12 +359,12 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
     result = resp.json()
     result["event_id"] = event_id
     result["http_status"] = resp.status_code
-    result["_ctwa_clid"] = ctwa_clid  # para log interno (nÃ£o vai para a API)
+    result["_ctwa_clid"] = ctwa_clid  # para log interno (não vai para a API)
     return result
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
 # ROTAS
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
 
 @app.route("/webhook/nuvemshop", methods=["POST"])
 def nuvemshop_webhook():
@@ -379,21 +379,21 @@ def nuvemshop_webhook():
         request.headers.get("X-HMAC-SHA256") or ""
     )
     if not validate_nuvemshop_signature(payload_bytes, sig_header):
-        app.logger.warning("Assinatura HMAC invÃ¡lida â rejeitando webhook")
+        app.logger.warning("Assinatura HMAC inválida — rejeitando webhook")
         return jsonify({"error": "invalid_signature"}), 401
 
     try:
         data = request.get_json(force=True) or {}
     except Exception as e:
-        return jsonify({"error": f"JSON invÃ¡lido: {e}"}), 400
+        return jsonify({"error": f"JSON inválido: {e}"}), 400
 
     # Nuvemshop envia { "topic": "orders/created", "store_id": ..., ... }
     topic = data.get("topic") or data.get("event") or ""
-    order = data.get("order") or data  # Ã s vezes o payload Ã© o pedido direto
+    order = data.get("order") or data  # às vezes o payload é o pedido direto
 
     order_id = str(order.get("id") or order.get("number") or "")
 
-    # SÃ³ processar pedidos criados ou pagos
+    # Só processar pedidos criados ou pagos
     if topic and "order" not in topic.lower():
         return jsonify({"status": "ignored", "reason": f"topic={topic}"}), 200
 
@@ -413,32 +413,32 @@ def nuvemshop_webhook():
             "order_id": order_id,
         }), 200
 
-    # Identificar nÃºmero pelo utm_content
+    # Identificar número pelo utm_content
     phone_number = UTM_CONTENT_TO_PHONE.get(utm["utm_content"])
     channel_name = UTM_CONTENT_TO_CHANNEL.get(utm["utm_content"], "WhatsApp Desconhecido")
 
     if not phone_number:
         app.logger.warning(
-            f"utm_content nÃ£o reconhecido: '{utm['utm_content']}' â pedido #{order_id}"
+            f"utm_content não reconhecido: '{utm['utm_content']}' — pedido #{order_id}"
         )
         return jsonify({
             "status": "ignored",
-            "reason": f"utm_content nÃ£o mapeado: {utm['utm_content']}",
+            "reason": f"utm_content não mapeado: {utm['utm_content']}",
             "order_id": order_id,
         }), 200
 
-    # DeduplicaÃ§Ã£o (mesmo prefixo usado em send_capi_purchase)
-    event_id = f"wzap_ctwa_{order_id}"
+    # Deduplicação interna (mesmo event_id usado em send_capi_purchase)
+    event_id = order_id
     if is_duplicate(event_id):
-        app.logger.info(f"Pedido #{order_id} jÃ¡ processado (event_id={event_id}) â ignorando")
+        app.logger.info(f"Pedido #{order_id} já processado (event_id={event_id}) — ignorando")
         return jsonify({"status": "duplicate", "event_id": event_id}), 200
 
-    # ââ GUARDA ANTI-DUPLICAÃÃO: sÃ³ disparar CAPI se houver ctwa_clid ââââââââââ
-    # A Nuvemshop jÃ¡ possui CAPI nativo (via integraÃ§Ã£o Facebook/Instagram
+    # ── GUARDA ANTI-DUPLICAÇÃO: só disparar CAPI se houver ctwa_clid ──────────
+    # A Nuvemshop já possui CAPI nativo (via integração Facebook/Instagram
     # Shopping) que cobre TODOS os pedidos com action_source "website".
     # Disparar nosso CAPI sem ctwa_clid = evento duplicado sem valor adicional.
-    # Com ctwa_clid: carregamos o fbc que atribui a venda ao anÃºncio CTWA exato
-    # â informaÃ§Ã£o que o CAPI da Nuvemshop NÃO tem. Isso justifica o segundo evento.
+    # Com ctwa_clid: carregamos o fbc que atribui a venda ao anúncio CTWA exato
+    # — informação que o CAPI da Nuvemshop NÃO tem. Isso justifica o segundo evento.
     customer_data = order.get("customer") or {}
     billing_data = order.get("billing_address") or customer_data.get("default_address") or {}
     pre_check_phone = format_phone(
@@ -448,15 +448,15 @@ def nuvemshop_webhook():
 
     if not pre_check_ctwa:
         app.logger.info(
-            f"Pedido #{order_id} sem ctwa_clid â CAPI da Nuvemshop jÃ¡ cobre, ignorando"
+            f"Pedido #{order_id} sem ctwa_clid — CAPI da Nuvemshop já cobre, ignorando"
         )
         return jsonify({
             "status": "skipped",
-            "reason": "no_ctwa_clid â nuvemshop_capi_handles_it",
+            "reason": "no_ctwa_clid — nuvemshop_capi_handles_it",
             "order_id": order_id,
             "channel": channel_name,
         }), 200
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ─────────────────────────────────────────────────────────────────────────
 
     # Disparar evento CAPI
     try:
@@ -471,9 +471,9 @@ def nuvemshop_webhook():
     save_event(order_id, event_id, utm["utm_content"], channel_name, value, currency, capi_result)
 
     app.logger.info(
-        f"â CAPI enviado | pedido #{order_id} | canal={channel_name} | "
+        f"✅ CAPI enviado | pedido #{order_id} | canal={channel_name} | "
         f"valor={currency} {value:.2f} | event_id={event_id} | "
-        f"ctwa={'â ' + capi_result.get('_ctwa_clid', '')[:16] + '...' if capi_result.get('_ctwa_clid') else 'â ï¸ sem ctwa_clid'}"
+        f"ctwa={'✅ ' + capi_result.get('_ctwa_clid', '')[:16] + '...' if capi_result.get('_ctwa_clid') else '⚠️ sem ctwa_clid'}"
     )
 
     return jsonify({
@@ -489,7 +489,7 @@ def nuvemshop_webhook():
 
 @app.route("/webhook/nuvemshop/test", methods=["GET"])
 def test_endpoint():
-    """Endpoint de teste â verifica configuraÃ§Ã£o sem precisar de webhook real."""
+    """Endpoint de teste — verifica configuração sem precisar de webhook real."""
     return jsonify({
         "status": "online",
         "pixel_id": PIXEL_ID,
@@ -502,7 +502,7 @@ def test_endpoint():
 
 @app.route("/webhook/nuvemshop/events", methods=["GET"])
 def list_events():
-    """Lista os Ãºltimos 50 eventos processados."""
+    """Lista os últimos 50 eventos processados."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -516,9 +516,9 @@ def list_events():
     return jsonify({"total": len(rows), "events": rows})
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
-# OAUTH CALLBACK â troca code por access_token e registra webhooks
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
+# OAUTH CALLBACK — troca code por access_token e registra webhooks
+# ──────────────────────────────────────────────
 
 NUVEMSHOP_CLIENT_ID     = os.getenv("NUVEMSHOP_CLIENT_ID", "")
 NUVEMSHOP_CLIENT_SECRET = os.getenv("NUVEMSHOP_CLIENT_SECRET", "")
@@ -526,9 +526,9 @@ NUVEMSHOP_TOKEN         = os.getenv("NUVEMSHOP_TOKEN", "")
 NUVEMSHOP_USER_ID       = os.getenv("NUVEMSHOP_USER_ID", "7647937")
 WEBHOOK_BASE_URL        = os.getenv("WEBHOOK_BASE_URL", "https://web-production-f9e966.up.railway.app")
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
-# WHATSAPP WEBHOOK â captura ctwa_clid de anÃºncios WZAP
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
+# WHATSAPP WEBHOOK — captura ctwa_clid de anúncios WZAP
+# ──────────────────────────────────────────────
 
 WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "ultimate_ppf_webhook_2026")
 WA_APP_SECRET   = os.getenv("WA_APP_SECRET", "")
@@ -556,14 +556,14 @@ def init_ctwa_db():
     return conn
 
 def extrair_codigo_mensagem(texto):
-    """Extrai cÃ³digo de rastreamento de mensagens prÃ©-preenchidas (ex: WZAP-PPF-MAI26-A)."""
+    """Extrai código de rastreamento de mensagens pré-preenchidas (ex: WZAP-PPF-MAI26-A)."""
     import re
     padrao = r'\b([A-Z]{2,}-[A-Z0-9]{2,}(?:-[A-Z0-9]+)*)\b'
     match = re.search(padrao, (texto or "").upper())
     return match.group(1) if match else ""
 
 def salvar_ctwa_click(phone, referral, mensagem_texto=""):
-    """Salva ctwa_clid ou cÃ³digo de mensagem no banco."""
+    """Salva ctwa_clid ou código de mensagem no banco."""
     ctwa_clid   = (referral or {}).get("ctwa_clid", "")
     ad_id       = (referral or {}).get("source_id", "")
     source_type = (referral or {}).get("source_type", "")
@@ -615,26 +615,26 @@ def processar_wa_payload(payload):
                 tem_codigo = extrair_codigo_mensagem(texto)
                 if not tem_ctwa and not tem_codigo:
                     continue
-                if salvar_ctwa_clich(phone, referral or {}, texto):
+                if salvar_ctwa_click(phone, referral or {}, texto):
                     salvos += 1
-                    app.logger.info(f"[CTWA] NOVO: phone={phone} | ctwa={( referral or {}).get('ctwa_clid','â')[:20]} | codigo={tem_codigo or 'â'}")
+                    app.logger.info(f"[CTWA] NOVO: phone={phone} | ctwa={( referral or {}).get('ctwa_clid','—')[:20]} | codigo={tem_codigo or '—'}")
     return salvos
 
 @app.route("/webhook/whatsapp", methods=["GET"])
 def wa_verify():
-    """Handshake de verificaÃ§Ã£o do webhook com o Meta."""
+    """Handshake de verificação do webhook com o Meta."""
     mode      = request.args.get("hub.mode")
     token     = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
     if mode == "subscribe" and token == WA_VERIFY_TOKEN:
         app.logger.info("[WA] Webhook verificado com sucesso")
         return challenge, 200
-    app.logger.warning(f"[WA] VerificaÃ§Ã£o falhou â token recebido: {token}")
+    app.logger.warning(f"[WA] Verificação falhou — token recebido: {token}")
     return "Forbidden", 403
 
 @app.route("/webhook/whatsapp", methods=["POST"])
 def wa_receive():
-    """Recebe notificaÃ§Ãµes do WhatsApp Business API."""
+    """Recebe notificações do WhatsApp Business API."""
     corpo = request.get_data()
     if WA_APP_SECRET:
         sig = request.headers.get("X-Hub-Signature-256", "")
@@ -668,10 +668,10 @@ def oauth_callback():
     """
     code = request.args.get("code")
     if not code:
-        return "<h2>â CÃ³digo OAuth nÃ£o encontrado na URL.</h2>", 400
+        return "<h2>❌ Código OAuth não encontrado na URL.</h2>", 400
 
     if not NUVEMSHOP_CLIENT_ID or not NUVEMSHOP_CLIENT_SECRET:
-        return "<h2>â NUVEMSHOP_CLIENT_ID ou NUVEMSHOP_CLIENT_SECRET nÃ£o configurados.</h2>", 500
+        return "<h2>❌ NUVEMSHOP_CLIENT_ID ou NUVEMSHOP_CLIENT_SECRET não configurados.</h2>", 500
 
     # 1. Trocar code por access_token
     try:
@@ -687,10 +687,10 @@ def oauth_callback():
         )
         token_data = token_resp.json()
     except Exception as e:
-        return f"<h2>â Erro ao trocar token: {e}</h2>", 500
+        return f"<h2>❌ Erro ao trocar token: {e}</h2>", 500
 
     if not token_resp.ok or "access_token" not in token_data:
-        return f"<h2>â Falha ao obter token: {token_data}</h2>", 500
+        return f"<h2>❌ Falha ao obter token: {token_data}</h2>", 500
 
     access_token = token_data["access_token"]
     user_id      = token_data.get("user_id", "?")
@@ -714,13 +714,13 @@ def oauth_callback():
             )
             rdata = r.json() if r.content else {}
             if r.ok:
-                results.append(f"â <b>{event}</b> â ID {rdata.get('id','?')}")
+                results.append(f"✅ <b>{event}</b> — ID {rdata.get('id','?')}")
             elif r.status_code == 422 and "taken" in r.text:
-                results.append(f"â <b>{event}</b> â jÃ¡ registrado")
+                results.append(f"✓ <b>{event}</b> — já registrado")
             else:
-                results.append(f"â ï¸ <b>{event}</b> â status {r.status_code}: {r.text[:100]}")
+                results.append(f"⚠️ <b>{event}</b> — status {r.status_code}: {r.text[:100]}")
         except Exception as e:
-            results.append(f"â <b>{event}</b> â erro: {e}")
+            results.append(f"❌ <b>{event}</b> — erro: {e}")
 
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
@@ -728,7 +728,7 @@ def oauth_callback():
 <style>body{{font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;background:#0f1117;color:#e2e8f0}}
 h2{{color:#34d399}}ul{{line-height:2}}code{{background:#1f2937;padding:2px 6px;border-radius:4px;color:#60a5fa}}</style>
 </head><body>
-<h2>ð OAuth concluÃ­do com sucesso!</h2>
+<h2>🎉 OAuth concluído com sucesso!</h2>
 <p>Store ID: <code>{user_id}</code></p>
 <p>Access Token: <code>{access_token[:12]}...{access_token[-4:]}</code></p>
 <h3>Webhooks registrados:</h3>
@@ -743,16 +743,16 @@ h2{{color:#34d399}}ul{{line-height:2}}code{{background:#1f2937;padding:2px 6px;b
 def admin_register_webhooks():
     """
     Registra os webhooks order/created e order/paid na Nuvemshop
-    usando o NUVEMSHOP_TOKEN e NUVEMSHOP_USER_ID jÃ¡ configurados em env.
+    usando o NUVEMSHOP_TOKEN e NUVEMSHOP_USER_ID já configurados em env.
     Acesse: GET /admin/register-webhooks
     """
     token   = NUVEMSHOP_TOKEN
     user_id = NUVEMSHOP_USER_ID
 
     if not token:
-        return jsonify({"error": "NUVEMSHOP_TOKEN nÃ£o configurado"}), 500
+        return jsonify({"error": "NUVEMSHOP_TOKEN não configurado"}), 500
     if not user_id:
-        return jsonify({"error": "NUVEMSHOP_USER_ID nÃ£o configurado"}), 500
+        return jsonify({"error": "NUVEMSHOP_USER_ID não configurado"}), 500
 
     webhook_url = f"{WEBHOOK_BASE_URL}/webhook/nuvemshop"
     events      = ["order/created", "order/paid"]
@@ -780,7 +780,7 @@ def admin_register_webhooks():
         except Exception as e:
             results.append({"event": event, "status": "exception", "error": str(e)})
 
-    # TambÃ©m listar webhooks existentes
+    # Também listar webhooks existentes
     try:
         lr = requests.get(
             f"https://api.tiendanube.com/v1/{user_id}/webhooks",
@@ -800,9 +800,9 @@ def admin_register_webhooks():
     }), 200
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
 # MAIN
-# ââââââââââââââââââââââââââââââââââââââââââââââ
+# ──────────────────────────────────────────────
 
 init_db()
 init_ctwa_db()
@@ -812,23 +812,23 @@ if __name__ == "__main__":
     init_ctwa_db()
     app.logger.setLevel("INFO")
     print(f"""
-ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-â       Nuvemshop â Meta CAPI â WhatsApp Attribution          â
-â âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ£
-â  Pixel ID  : {PIXEL_ID:<48}â
-â  Porta     : {PORT:<48}â
-â  DB        : {DB_PATH:<48}â
-â  Test Mode : {str(TEST_MODE):<48}â
-â âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ£
-â  Canais mapeados:                                            â
-â  â¢ numero_0324 â 9692-0324 (Nuvem Chat / IA)                â
-â  â¢ numero_6052 â 9646-6052 (Vendas Manual)                  â
-â  â¢ numero_6900 â 9674-6900 (Vendas Manual)                  â
-â âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ£
-â  Endpoints:                                                  â
-â  POST /webhook/nuvemshop        â recebe eventos            â
-â  GET  /webhook/nuvemshop/test   â verifica configuraÃ§Ã£o      â
-â  GET  /webhook/nuvemshop/events â lista Ãºltimos 50 eventos  â
-ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+╔══════════════════════════════════════════════════════════════╗
+║       Nuvemshop → Meta CAPI — WhatsApp Attribution          ║
+╠══════════════════════════════════════════════════════════════╣
+║  Pixel ID  : {PIXEL_ID:<48}║
+║  Porta     : {PORT:<48}║
+║  DB        : {DB_PATH:<48}║
+║  Test Mode : {str(TEST_MODE):<48}║
+╠══════════════════════════════════════════════════════════════╣
+║  Canais mapeados:                                            ║
+║  • numero_0324 → 9692-0324 (Nuvem Chat / IA)                ║
+║  • numero_6052 → 9646-6052 (Vendas Manual)                  ║
+║  • numero_6900 → 9674-6900 (Vendas Manual)                  ║
+╠══════════════════════════════════════════════════════════════╣
+║  Endpoints:                                                  ║
+║  POST /webhook/nuvemshop        ← recebe eventos            ║
+║  GET  /webhook/nuvemshop/test   ← verifica configuração     ║
+║  GET  /webhook/nuvemshop/events ← lista últimos 50 eventos  ║
+╚══════════════════════════════════════════════════════════════╝
     """)
     app.run(host="0.0.0.0", port=PORT, debug=False)
