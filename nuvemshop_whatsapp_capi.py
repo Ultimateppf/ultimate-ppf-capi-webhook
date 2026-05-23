@@ -807,8 +807,6 @@ def admin_register_webhooks():
 init_db()
 init_ctwa_db()
 app.logger.setLevel("INFO")
-init_db()
-init_ctwa_db()
 if __name__ == "__main__":
     init_db()
     init_ctwa_db()
