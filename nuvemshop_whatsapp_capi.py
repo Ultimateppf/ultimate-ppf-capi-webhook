@@ -3,25 +3,25 @@
 nuvemshop_whatsapp_capi.py
 ==========================
 Webhook server que recebe eventos de pedido da Nuvemshop (order/created, order/paid),
-detecta pedidos originados via WhatsApp (utm_source=whatsapp) e dispara um evento
-Purchase no Meta Conversions API com atribuição correta ao número de WhatsApp.
+detecta pedidos originados via WhatsApp (utm_source=whatsapp OU ctwa_clid presente)
+e dispara um evento Purchase no Meta Conversions API com atribuição correta.
 
 NÚMEROS MAPEADOS:
-  - utm_content=numero_0324  →  +55 67 9692-0324  (Nuvem Chat / IA)
-  - utm_content=numero_6052  →  +55 67 9646-6052  (vendas manual)
-  - utm_content=numero_6900  →  +55 67 9674-6900  (vendas manual)
+- utm_content=numero_0324 → +55 67 9692-0324 (Nuvem Chat / IA)
+- utm_content=numero_6052 → +55 67 9646-6052 (vendas manual)
+- utm_content=numero_6900 → +55 67 9674-6900 (vendas manual)
 
 DEPENDÊNCIAS:
-  pip install flask requests
+pip install flask requests
 
 USO:
-  python nuvemshop_whatsapp_capi.py
+python nuvemshop_whatsapp_capi.py
 
-  Variáveis de ambiente (obrigatórias):
-    META_PIXEL_ID        → ID do Pixel Meta (ex: 123456789)
-    META_ACCESS_TOKEN    → Token de acesso do Conversions API
-    NUVEMSHOP_SECRET     → Secret do webhook da Nuvemshop (para validação HMAC)
-    PORT                 → Porta do servidor (padrão: 5001)
+Variáveis de ambiente (obrigatórias):
+META_PIXEL_ID       → ID do Pixel Meta (ex: 123456789)
+META_ACCESS_TOKEN   → Token de acesso do Conversions API
+NUVEMSHOP_SECRET    → Secret do webhook da Nuvemshop (para validação HMAC)
+PORT                → Porta do servidor (padrão: 5001)
 """
 
 import os
@@ -54,8 +54,6 @@ CTWA_DB_PATH = os.getenv("CTWA_DB_PATH", "ctwa_store.db")
 CAPI_URL = f"https://graph.facebook.com/v19.0/{PIXEL_ID}/events"
 
 # Mapeamento utm_content → número WhatsApp (formato E.164 sem +, 12 dígitos: 55+DDD+número)
-# NOTA: se o WhatsApp armazenar no formato 9 dígitos (com 9 adicional), use:
-#   0324 → 5567996920324   6052 → 5567996466052   6900 → 5567996746900
 UTM_CONTENT_TO_PHONE = {
     "numero_0324": "556796920324",  # +55 67 9692-0324 — Nuvem Chat / IA
     "numero_6052": "556796466052",  # +55 67 9646-6052 — Vendas manual
@@ -107,7 +105,7 @@ def save_event(order_id, event_id, utm_content, phone_channel, value, currency, 
     c = conn.cursor()
     c.execute("""
         INSERT OR IGNORE INTO processed_events
-        (order_id, event_id, utm_content, phone_channel, value, currency, sent_at, capi_response)
+            (order_id, event_id, utm_content, phone_channel, value, currency, sent_at, capi_response)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         str(order_id), event_id, utm_content, phone_channel,
@@ -196,16 +194,16 @@ def extract_utm(order: dict) -> dict:
     """
     Extrai parâmetros UTM do pedido Nuvemshop.
     Localização possível:
-      - order["landing_url"] — URL de origem
-      - order["utm_parameters"] — objeto UTM (nem sempre presente)
-      - order["referring_url"]
+    - order["landing_url"]    — URL de origem
+    - order["utm_parameters"] — objeto UTM (nem sempre presente)
+    - order["referring_url"]
     """
     utm = {
-        "utm_source": "",
-        "utm_medium": "",
+        "utm_source":   "",
+        "utm_medium":   "",
         "utm_campaign": "",
-        "utm_content": "",
-        "utm_term": "",
+        "utm_content":  "",
+        "utm_term":     "",
     }
 
     # 1. Tentar objeto utm_parameters direto
@@ -250,7 +248,7 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
 
     # PII do cliente
     customer = order.get("customer") or {}
-    billing = order.get("billing_address") or customer.get("default_address") or {}
+    billing  = order.get("billing_address") or customer.get("default_address") or {}
 
     email_raw = (customer.get("email") or billing.get("email") or "").strip().lower()
 
@@ -259,13 +257,13 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
     # Para o campo ph: usar telefone do cliente ou, como fallback, o número do canal
     phone_raw = customer_phone_raw or format_phone(phone_number)
 
-    first_name = (billing.get("first_name") or customer.get("name") or "").split()[0].lower()
-    last_name_parts = (billing.get("last_name") or customer.get("name") or "").split()
-    last_name = last_name_parts[-1].lower() if last_name_parts else ""
-    city = (billing.get("city") or "").lower()
-    state = (billing.get("province_code") or billing.get("state") or "").lower()
-    zip_code = "".join(filter(str.isdigit, billing.get("zipcode") or billing.get("zip") or ""))
-    country = (billing.get("country") or "BR").upper()
+    first_name      = (billing.get("first_name") or customer.get("name") or "").split()[0].lower()
+    last_name_parts = (billing.get("last_name")  or customer.get("name") or "").split()
+    last_name       = last_name_parts[-1].lower() if last_name_parts else ""
+    city            = (billing.get("city") or "").lower()
+    state           = (billing.get("province_code") or billing.get("state") or "").lower()
+    zip_code        = "".join(filter(str.isdigit, billing.get("zipcode") or billing.get("zip") or ""))
+    country         = (billing.get("country") or "BR").upper()
 
     # Timestamp do pedido
     created_at = order.get("created_at") or ""
@@ -276,35 +274,32 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
         event_time = int(time.time())
 
     # ── CTWA Attribution: buscar ctwa_clid do cliente ──────────────────────────
-    # O ctwa_clid é capturado pelo whatsapp_ctwa_receiver.py quando o cliente
-    # clica num anúncio CTWA e envia a primeira mensagem no WhatsApp.
-    # Enviado como fbc, ele atribui a venda ao anúncio correto no Gerenciador.
     ctwa_clid = lookup_ctwa_clid(customer_phone_raw)
     fbc_value = f"fb.1.{int(time.time() * 1000)}.{ctwa_clid}" if ctwa_clid else ""
     # ───────────────────────────────────────────────────────────────────────────
 
     # user_data
     user_data = {
-        "external_id": [sha256(str(order.get("customer_id") or email_raw or order_id))],
-        "client_ip_address": order.get("client_ip") or "",
-        "client_user_agent": "",
+        "external_id":        [sha256(str(order.get("customer_id") or email_raw or order_id))],
+        "client_ip_address":  order.get("client_ip") or "",
+        "client_user_agent":  "",
     }
     if fbc_value:
         user_data["fbc"] = fbc_value  # ← atribuição CTWA — campo crítico para ROAS
     if email_raw:
-        user_data["em"] = [sha256(email_raw)]
+        user_data["em"]  = [sha256(email_raw)]
     if phone_raw:
-        user_data["ph"] = [sha256(phone_raw)]
+        user_data["ph"]  = [sha256(phone_raw)]
     if first_name:
-        user_data["fn"] = [sha256(first_name)]
+        user_data["fn"]  = [sha256(first_name)]
     if last_name:
-        user_data["ln"] = [sha256(last_name)]
+        user_data["ln"]  = [sha256(last_name)]
     if city:
-        user_data["ct"] = [sha256(city)]
+        user_data["ct"]  = [sha256(city)]
     if state:
-        user_data["st"] = [sha256(state)]
+        user_data["st"]  = [sha256(state)]
     if zip_code:
-        user_data["zp"] = [sha256(zip_code)]
+        user_data["zp"]  = [sha256(zip_code)]
     if country:
         user_data["country"] = [sha256(country)]
 
@@ -312,15 +307,15 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
     contents = []
     for item in (order.get("products") or order.get("line_items") or []):
         contents.append({
-            "id": str(item.get("product_id") or item.get("id") or ""),
-            "quantity": int(item.get("quantity") or 1),
+            "id":        str(item.get("product_id") or item.get("id") or ""),
+            "quantity":  int(item.get("quantity") or 1),
             "item_price": float(item.get("price") or 0),
         })
 
     custom_data = {
-        "value": total,
-        "currency": currency,
-        "order_id": order_id,
+        "value":        total,
+        "currency":     currency,
+        "order_id":     order_id,
         "content_type": "product",
     }
     if contents:
@@ -328,17 +323,17 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
 
     # Informações do canal WhatsApp
     custom_data["whatsapp_channel"] = UTM_CONTENT_TO_CHANNEL.get(utm["utm_content"], utm["utm_content"])
-    custom_data["utm_medium"] = utm["utm_medium"]
-    custom_data["utm_campaign"] = utm["utm_campaign"]
+    custom_data["utm_medium"]       = utm["utm_medium"]
+    custom_data["utm_campaign"]     = utm["utm_campaign"]
 
     event = {
-        "event_name": "Purchase",
-        "event_time": event_time,
-        "event_id": event_id,
+        "event_name":       "Purchase",
+        "event_time":       event_time,
+        "event_id":         event_id,
         "event_source_url": order.get("landing_url") or f"https://loja.ultimateppf.com.br/",
-        "action_source": "other",  # "other" para WhatsApp
-        "user_data": user_data,
-        "custom_data": custom_data,
+        "action_source":    "other",   # "other" para WhatsApp
+        "user_data":        user_data,
+        "custom_data":      custom_data,
     }
 
     payload = {
@@ -355,11 +350,11 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
         app.logger.info(f"[TEST MODE] Payload CAPI:\n{json.dumps(payload, indent=2, ensure_ascii=False)}")
         return {"test_mode": True, "payload": payload, "event_id": event_id, "_ctwa_clid": ctwa_clid}
 
-    resp = requests.post(CAPI_URL, params=params, json=payload, timeout=10)
+    resp   = requests.post(CAPI_URL, params=params, json=payload, timeout=10)
     result = resp.json()
-    result["event_id"] = event_id
+    result["event_id"]    = event_id
     result["http_status"] = resp.status_code
-    result["_ctwa_clid"] = ctwa_clid  # para log interno (não vai para a API)
+    result["_ctwa_clid"]  = ctwa_clid  # para log interno (não vai para a API)
     return result
 
 # ──────────────────────────────────────────────
@@ -375,8 +370,8 @@ def nuvemshop_webhook():
     # Validar assinatura HMAC
     sig_header = (
         request.headers.get("X-Linkedstore-Token") or
-        request.headers.get("X-Nuvemshop-Token") or
-        request.headers.get("X-HMAC-SHA256") or ""
+        request.headers.get("X-Nuvemshop-Token")  or
+        request.headers.get("X-HMAC-SHA256")       or ""
     )
     if not validate_nuvemshop_signature(payload_bytes, sig_header):
         app.logger.warning("Assinatura HMAC inválida — rejeitando webhook")
@@ -387,7 +382,6 @@ def nuvemshop_webhook():
     except Exception as e:
         return jsonify({"error": f"JSON inválido: {e}"}), 400
 
-    # Nuvemshop envia { "topic": "orders/created", "store_id": ..., ... }
     topic = data.get("topic") or data.get("event") or ""
     order = data.get("order") or data  # às vezes o payload é o pedido direto
 
@@ -404,59 +398,53 @@ def nuvemshop_webhook():
         f"Pedido #{order_id} | topic={topic} | utm_source={utm['utm_source']} | utm_content={utm['utm_content']}"
     )
 
-    # Verificar se veio do WhatsApp
-    if utm["utm_source"].lower() != "whatsapp":
+    # ── PRE-CHECK ctwa_clid (antes de filtrar por UTM) ─────────────────────────
+    # O ctwa_clid prova que o cliente clicou num anúncio Meta CTWA.
+    # Verificamos ANTES do filtro por utm_source para não perder compras reais
+    # onde o cliente chegou via CTWA mas sem UTM no link de produto.
+    customer_data = order.get("customer") or {}
+    billing_data  = order.get("billing_address") or customer_data.get("default_address") or {}
+    pre_check_phone = format_phone(
+        customer_data.get("phone") or billing_data.get("phone") or ""
+    )
+    pre_check_ctwa = lookup_ctwa_clid(pre_check_phone)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # Verificar atribuição Meta: utm_source=whatsapp OU ctwa_clid presente.
+    # Qualquer um dos dois é prova suficiente de origem em anúncio Meta/WhatsApp.
+    is_whatsapp_utm = utm["utm_source"].lower() == "whatsapp"
+    if not is_whatsapp_utm and not pre_check_ctwa:
         return jsonify({
             "status": "ignored",
-            "reason": "utm_source != whatsapp",
+            "reason": "sem atribuição Meta (utm_source != whatsapp e sem ctwa_clid)",
             "utm_source": utm["utm_source"],
             "order_id": order_id,
         }), 200
 
-    # Identificar número pelo utm_content
+    # Identificar canal pelo utm_content (ou usar phone do cliente se só ctwa)
     phone_number = UTM_CONTENT_TO_PHONE.get(utm["utm_content"])
-    channel_name = UTM_CONTENT_TO_CHANNEL.get(utm["utm_content"], "WhatsApp Desconhecido")
+    channel_name = UTM_CONTENT_TO_CHANNEL.get(utm["utm_content"], "WhatsApp (CTWA)")
 
     if not phone_number:
-        app.logger.warning(
-            f"utm_content não reconhecido: '{utm['utm_content']}' — pedido #{order_id}"
-        )
-        return jsonify({
-            "status": "ignored",
-            "reason": f"utm_content não mapeado: {utm['utm_content']}",
-            "order_id": order_id,
-        }), 200
+        if pre_check_ctwa:
+            # Sem mapeamento utm_content mas temos ctwa_clid — usar phone do cliente
+            phone_number = pre_check_phone
+            channel_name = "WhatsApp (CTWA — canal não identificado)"
+        else:
+            app.logger.warning(
+                f"utm_content não reconhecido: '{utm['utm_content']}' — pedido #{order_id}"
+            )
+            return jsonify({
+                "status": "ignored",
+                "reason": f"utm_content não mapeado: {utm['utm_content']}",
+                "order_id": order_id,
+            }), 200
 
     # Deduplicação interna (mesmo event_id usado em send_capi_purchase)
     event_id = order_id
     if is_duplicate(event_id):
         app.logger.info(f"Pedido #{order_id} já processado (event_id={event_id}) — ignorando")
         return jsonify({"status": "duplicate", "event_id": event_id}), 200
-
-    # ── GUARDA ANTI-DUPLICAÇÃO: só disparar CAPI se houver ctwa_clid ──────────
-    # A Nuvemshop já possui CAPI nativo (via integração Facebook/Instagram
-    # Shopping) que cobre TODOS os pedidos com action_source "website".
-    # Disparar nosso CAPI sem ctwa_clid = evento duplicado sem valor adicional.
-    # Com ctwa_clid: carregamos o fbc que atribui a venda ao anúncio CTWA exato
-    # — informação que o CAPI da Nuvemshop NÃO tem. Isso justifica o segundo evento.
-    customer_data = order.get("customer") or {}
-    billing_data = order.get("billing_address") or customer_data.get("default_address") or {}
-    pre_check_phone = format_phone(
-        customer_data.get("phone") or billing_data.get("phone") or ""
-    )
-    pre_check_ctwa = lookup_ctwa_clid(pre_check_phone)
-
-    if not pre_check_ctwa:
-        app.logger.info(
-            f"Pedido #{order_id} sem ctwa_clid — CAPI da Nuvemshop já cobre, ignorando"
-        )
-        return jsonify({
-            "status": "skipped",
-            "reason": "no_ctwa_clid — nuvemshop_capi_handles_it",
-            "order_id": order_id,
-            "channel": channel_name,
-        }), 200
-    # ─────────────────────────────────────────────────────────────────────────
 
     # Disparar evento CAPI
     try:
@@ -466,7 +454,7 @@ def nuvemshop_webhook():
         return jsonify({"status": "error", "error": str(e)}), 500
 
     # Salvar no banco
-    value = float(order.get("total") or order.get("total_price") or 0)
+    value    = float(order.get("total") or order.get("total_price") or 0)
     currency = str(order.get("currency") or "BRL").upper()
     save_event(order_id, event_id, utm["utm_content"], channel_name, value, currency, capi_result)
 
@@ -477,28 +465,26 @@ def nuvemshop_webhook():
     )
 
     return jsonify({
-        "status": "ok",
+        "status":   "ok",
         "order_id": order_id,
         "event_id": event_id,
-        "channel": channel_name,
-        "value": value,
+        "channel":  channel_name,
+        "value":    value,
         "currency": currency,
-        "capi": capi_result,
+        "capi":     capi_result,
     }), 200
-
 
 @app.route("/webhook/nuvemshop/test", methods=["GET"])
 def test_endpoint():
     """Endpoint de teste — verifica configuração sem precisar de webhook real."""
     return jsonify({
-        "status": "online",
-        "pixel_id": PIXEL_ID,
+        "status":    "online",
+        "pixel_id":  PIXEL_ID,
         "test_mode": TEST_MODE,
-        "db_path": DB_PATH,
-        "channels": UTM_CONTENT_TO_CHANNEL,
+        "db_path":   DB_PATH,
+        "channels":  UTM_CONTENT_TO_CHANNEL,
         "timestamp": datetime.utcnow().isoformat(),
     })
-
 
 @app.route("/webhook/nuvemshop/events", methods=["GET"])
 def list_events():
@@ -514,7 +500,6 @@ def list_events():
     rows = [dict(r) for r in c.fetchall()]
     conn.close()
     return jsonify({"total": len(rows), "events": rows})
-
 
 # ──────────────────────────────────────────────
 # OAUTH CALLBACK — troca code por access_token e registra webhooks
@@ -538,20 +523,20 @@ def init_ctwa_db():
     conn = sqlite3.connect(CTWA_DB_PATH, check_same_thread=False)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS ctwa_clicks (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            phone           TEXT NOT NULL,
-            ctwa_clid       TEXT,
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone        TEXT NOT NULL,
+            ctwa_clid    TEXT,
             mensagem_codigo TEXT,
-            ad_id           TEXT,
-            source_type     TEXT,
-            headline        TEXT,
-            received_at     TEXT NOT NULL,
-            raw_referral    TEXT,
+            ad_id        TEXT,
+            source_type  TEXT,
+            headline     TEXT,
+            received_at  TEXT NOT NULL,
+            raw_referral TEXT,
             UNIQUE(phone, ctwa_clid)
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_phone ON ctwa_clicks(phone)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ctwa ON ctwa_clicks(ctwa_clid)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ctwa  ON ctwa_clicks(ctwa_clid)")
     conn.commit()
     return conn
 
@@ -559,7 +544,7 @@ def extrair_codigo_mensagem(texto):
     """Extrai código de rastreamento de mensagens pré-preenchidas (ex: WZAP-PPF-MAI26-A)."""
     import re
     padrao = r'\b([A-Z]{2,}-[A-Z0-9]{2,}(?:-[A-Z0-9]+)*)\b'
-    match = re.search(padrao, (texto or "").upper())
+    match  = re.search(padrao, (texto or "").upper())
     return match.group(1) if match else ""
 
 def salvar_ctwa_click(phone, referral, mensagem_texto=""):
@@ -574,7 +559,7 @@ def salvar_ctwa_click(phone, referral, mensagem_texto=""):
         return False
 
     ctwa_key = ctwa_clid or f"MSG:{codigo}:{phone[-4:]}"
-    now = datetime.utcnow().isoformat()
+    now      = datetime.utcnow().isoformat()
 
     try:
         conn = sqlite3.connect(CTWA_DB_PATH, timeout=5)
@@ -606,18 +591,20 @@ def processar_wa_payload(payload):
                 phone = msg.get("from", "")
                 if not phone:
                     contacts = value.get("contacts", [])
-                    phone = contacts[0].get("wa_id", "") if contacts else ""
+                    phone    = contacts[0].get("wa_id", "") if contacts else ""
                 if not phone:
                     continue
-                referral = msg.get("referral")
-                texto = msg.get("text", {}).get("body", "") if msg.get("type") == "text" else ""
-                tem_ctwa = referral and referral.get("ctwa_clid")
+                referral   = msg.get("referral")
+                texto      = msg.get("text", {}).get("body", "") if msg.get("type") == "text" else ""
+                tem_ctwa   = referral and referral.get("ctwa_clid")
                 tem_codigo = extrair_codigo_mensagem(texto)
                 if not tem_ctwa and not tem_codigo:
                     continue
                 if salvar_ctwa_click(phone, referral or {}, texto):
                     salvos += 1
-                    app.logger.info(f"[CTWA] NOVO: phone={phone} | ctwa={( referral or {}).get('ctwa_clid','—')[:20]} | codigo={tem_codigo or '—'}")
+                    app.logger.info(
+                        f"[CTWA] NOVO: phone={phone} | ctwa={(referral or {}).get('ctwa_clid','—')[:20]} | codigo={tem_codigo or '—'}"
+                    )
     return salvos
 
 @app.route("/webhook/whatsapp", methods=["GET"])
@@ -637,7 +624,7 @@ def wa_receive():
     """Recebe notificações do WhatsApp Business API."""
     corpo = request.get_data()
     if WA_APP_SECRET:
-        sig = request.headers.get("X-Hub-Signature-256", "")
+        sig      = request.headers.get("X-Hub-Signature-256", "")
         expected = "sha256=" + hmac.new(
             WA_APP_SECRET.encode(), corpo, hashlib.sha256
         ).hexdigest()
@@ -664,7 +651,6 @@ def oauth_callback():
     Recebe o authorization code do OAuth Nuvemshop e:
     1. Troca pelo access_token
     2. Registra os webhooks order/created e order/paid
-    Acesse: https://www.nuvemshop.com.br/apps/{CLIENT_ID}/authorize
     """
     code = request.args.get("code")
     if not code:
@@ -702,7 +688,7 @@ def oauth_callback():
 
     for event in events:
         try:
-            r = requests.post(
+            r     = requests.post(
                 f"https://api.tiendanube.com/v1/{user_id}/webhooks",
                 headers={
                     "Authentication": f"bearer {access_token}",
@@ -738,13 +724,11 @@ h2{{color:#34d399}}ul{{line-height:2}}code{{background:#1f2937;padding:2px 6px;b
 </body></html>"""
     return html, 200
 
-
 @app.route("/admin/register-webhooks", methods=["GET"])
 def admin_register_webhooks():
     """
     Registra os webhooks order/created e order/paid na Nuvemshop
     usando o NUVEMSHOP_TOKEN e NUVEMSHOP_USER_ID já configurados em env.
-    Acesse: GET /admin/register-webhooks
     """
     token   = NUVEMSHOP_TOKEN
     user_id = NUVEMSHOP_USER_ID
@@ -760,7 +744,7 @@ def admin_register_webhooks():
 
     for event in events:
         try:
-            r = requests.post(
+            r     = requests.post(
                 f"https://api.tiendanube.com/v1/{user_id}/webhooks",
                 headers={
                     "Authentication": f"bearer {token}",
@@ -772,7 +756,7 @@ def admin_register_webhooks():
             )
             rdata = r.json() if r.content else {}
             if r.ok:
-                results.append({"event": event, "status": "created", "id": rdata.get("id")})
+                results.append({"event": event, "status": "created",           "id":   rdata.get("id")})
             elif r.status_code == 422 and "taken" in r.text:
                 results.append({"event": event, "status": "already_registered"})
             else:
@@ -780,9 +764,9 @@ def admin_register_webhooks():
         except Exception as e:
             results.append({"event": event, "status": "exception", "error": str(e)})
 
-    # Também listar webhooks existentes
+    # Listar webhooks existentes
     try:
-        lr = requests.get(
+        lr       = requests.get(
             f"https://api.tiendanube.com/v1/{user_id}/webhooks",
             headers={"Authentication": f"bearer {token}", "User-Agent": "UltimatePPF-CAPI/1.0"},
             timeout=15
@@ -792,13 +776,12 @@ def admin_register_webhooks():
         existing = {"error": str(e)}
 
     return jsonify({
-        "store_id":  user_id,
-        "token_preview": f"{token[:8]}...{token[-4:]}",
-        "webhook_url": webhook_url,
+        "store_id":             user_id,
+        "token_preview":        f"{token[:8]}...{token[-4:]}",
+        "webhook_url":          webhook_url,
         "registration_results": results,
-        "existing_webhooks": existing
+        "existing_webhooks":    existing
     }), 200
-
 
 # ──────────────────────────────────────────────
 # MAIN
@@ -812,23 +795,23 @@ if __name__ == "__main__":
     init_ctwa_db()
     app.logger.setLevel("INFO")
     print(f"""
-╔══════════════════════════════════════════════════════════════╗
-║       Nuvemshop → Meta CAPI — WhatsApp Attribution          ║
+╔═════════════════════════════════════════════════════════════╗
+║     Nuvemshop → Meta CAPI — WhatsApp Attribution            ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Pixel ID  : {PIXEL_ID:<48}║
-║  Porta     : {PORT:<48}║
-║  DB        : {DB_PATH:<48}║
-║  Test Mode : {str(TEST_MODE):<48}║
+║ Pixel ID  : {PIXEL_ID:<48}║
+║ Porta     : {PORT:<48}║
+║ DB        : {DB_PATH:<48}║
+║ Test Mode : {str(TEST_MODE):<48}║
 ╠══════════════════════════════════════════════════════════════╣
-║  Canais mapeados:                                            ║
+║ Canais mapeados:                                             ║
 ║  • numero_0324 → 9692-0324 (Nuvem Chat / IA)                ║
 ║  • numero_6052 → 9646-6052 (Vendas Manual)                  ║
 ║  • numero_6900 → 9674-6900 (Vendas Manual)                  ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Endpoints:                                                  ║
-║  POST /webhook/nuvemshop        ← recebe eventos            ║
-║  GET  /webhook/nuvemshop/test   ← verifica configuração     ║
+║ Endpoints:                                                   ║
+║  POST /webhook/nuvemshop       ← recebe eventos             ║
+║  GET  /webhook/nuvemshop/test  ← verifica configuração      ║
 ║  GET  /webhook/nuvemshop/events ← lista últimos 50 eventos  ║
 ╚══════════════════════════════════════════════════════════════╝
-    """)
+""")
     app.run(host="0.0.0.0", port=PORT, debug=False)
