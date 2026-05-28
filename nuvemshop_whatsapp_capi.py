@@ -132,6 +132,47 @@ def validate_nuvemshop_signature(payload_bytes: bytes, signature_header: str) ->
     return hmac.compare_digest(expected, signature_header or "")
 
 # ──────────────────────────────────────────────
+# NUVEMSHOP API — buscar pedido completo
+# ──────────────────────────────────────────────
+
+def fetch_nuvemshop_order(store_id, order_id):
+    """
+    Busca pedido completo na API Nuvemshop.
+    O webhook só envia payload mínimo {store_id, event, id} — sem total, produtos ou cliente.
+    Esta função busca o pedido completo usando o NUVEMSHOP_TOKEN configurado no Railway.
+    """
+    token = os.getenv("NUVEMSHOP_TOKEN", "")
+    if not token or not store_id or not order_id:
+        app.logger.warning(
+            f"fetch_nuvemshop_order: token={'SET' if token else 'MISSING'} "
+            f"store_id={store_id} order_id={order_id}"
+        )
+        return None
+    try:
+        resp = requests.get(
+            f"https://api.tiendanube.com/v1/{store_id}/orders/{order_id}",
+            headers={
+                "Authentication": f"bearer {token}",
+                "User-Agent": "UltimatePPF-CAPI/1.0",
+            },
+            timeout=15,
+        )
+        if resp.ok:
+            order_full = resp.json()
+            app.logger.info(
+                f"[API Nuvemshop] Pedido #{order_id} buscado — "
+                f"total={order_full.get('total')} currency={order_full.get('currency')}"
+            )
+            return order_full
+        app.logger.warning(
+            f"[API Nuvemshop] HTTP {resp.status_code} ao buscar pedido #{order_id}: {resp.text[:200]}"
+        )
+        return None
+    except Exception as e:
+        app.logger.warning(f"[API Nuvemshop] Erro ao buscar pedido #{order_id}: {e}")
+        return None
+
+# ──────────────────────────────────────────────
 # CTWA ATTRIBUTION — lookup ctwa_clid → fbc
 # ──────────────────────────────────────────────
 
@@ -257,7 +298,9 @@ def send_capi_purchase(order: dict, utm: dict, phone_number: str) -> dict:
     # Para o campo ph: usar telefone do cliente ou, como fallback, o número do canal
     phone_raw = customer_phone_raw or format_phone(phone_number)
 
-    first_name      = (billing.get("first_name") or customer.get("name") or "").split()[0].lower()
+    # FIX: safe split — evita IndexError quando nome está vazio
+    _fn_parts  = (billing.get("first_name") or customer.get("name") or "").split()
+    first_name = _fn_parts[0].lower() if _fn_parts else ""
     last_name_parts = (billing.get("last_name")  or customer.get("name") or "").split()
     last_name       = last_name_parts[-1].lower() if last_name_parts else ""
     city            = (billing.get("city") or "").lower()
@@ -384,6 +427,22 @@ def nuvemshop_webhook():
 
     topic = data.get("topic") or data.get("event") or ""
     order = data.get("order") or data  # às vezes o payload é o pedido direto
+
+    # FIX: O webhook Nuvemshop envia apenas payload mínimo {store_id, event, id}.
+    # Buscar pedido completo na API para obter total, produtos e dados do cliente.
+    store_id_from_payload  = data.get("store_id")
+    order_id_from_payload  = data.get("id")
+    if (not order.get("total") and not order.get("total_price")
+            and store_id_from_payload and order_id_from_payload):
+        full_order = fetch_nuvemshop_order(store_id_from_payload, order_id_from_payload)
+        if full_order:
+            order = full_order
+        else:
+            app.logger.warning(
+                f"Não foi possível buscar pedido #{order_id_from_payload} — "
+                f"processando com payload mínimo (total=0)"
+            )
+
 
     order_id = str(order.get("id") or order.get("number") or "")
 
