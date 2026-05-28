@@ -413,32 +413,40 @@ def nuvemshop_webhook():
     # Verificar atribuição Meta: utm_source=whatsapp OU ctwa_clid presente.
     # Qualquer um dos dois é prova suficiente de origem em anúncio Meta/WhatsApp.
     is_whatsapp_utm = utm["utm_source"].lower() == "whatsapp"
+
+    # ── FIX 3: Disparar CAPI para TODOS os pedidos pagos (não só WhatsApp) ──────
+    # Pedidos WhatsApp (utm_source=whatsapp ou ctwa_clid): atribuição completa + fbc
+    # Pedidos site (sem UTM/ctwa): email/phone hasheados → aumenta match rate no Meta
+    # event_id = order_id garante deduplicação com o CAPI nativo da Nuvemshop.
+
     if not is_whatsapp_utm and not pre_check_ctwa:
-        return jsonify({
-            "status": "ignored",
-            "reason": "sem atribuição Meta (utm_source != whatsapp e sem ctwa_clid)",
-            "utm_source": utm["utm_source"],
-            "order_id": order_id,
-        }), 200
+        # FIX 4: Log explícito de diagnóstico (antes era retorno silencioso)
+        _total_log = float(order.get("total") or order.get("total_price") or 0)
+        app.logger.info(
+            f"[CAPI SITE] Pedido #{order_id} | R$ {_total_log:.2f} | "
+            f"phone={pre_check_phone or '—'} | utm_source={utm['utm_source'] or '—'} | "
+            f"sem atribuição WhatsApp → disparando CAPI via email/phone hash"
+        )
+        phone_number = pre_check_phone  # phone do cliente para matching hash
+        channel_name = "Site (sem atribuição WhatsApp)"
+    else:
+        # Identificar canal pelo utm_content (ou usar phone do cliente se só ctwa)
+        phone_number = UTM_CONTENT_TO_PHONE.get(utm["utm_content"])
+        channel_name = UTM_CONTENT_TO_CHANNEL.get(utm["utm_content"], "WhatsApp (CTWA)")
 
-    # Identificar canal pelo utm_content (ou usar phone do cliente se só ctwa)
-    phone_number = UTM_CONTENT_TO_PHONE.get(utm["utm_content"])
-    channel_name = UTM_CONTENT_TO_CHANNEL.get(utm["utm_content"], "WhatsApp (CTWA)")
-
-    if not phone_number:
-        if pre_check_ctwa:
-            # Sem mapeamento utm_content mas temos ctwa_clid — usar phone do cliente
-            phone_number = pre_check_phone
-            channel_name = "WhatsApp (CTWA — canal não identificado)"
-        else:
-            app.logger.warning(
-                f"utm_content não reconhecido: '{utm['utm_content']}' — pedido #{order_id}"
-            )
-            return jsonify({
-                "status": "ignored",
-                "reason": f"utm_content não mapeado: {utm['utm_content']}",
-                "order_id": order_id,
-            }), 200
+        if not phone_number:
+            if pre_check_ctwa:
+                # Sem mapeamento utm_content mas temos ctwa_clid — usar phone do cliente
+                phone_number = pre_check_phone
+                channel_name = "WhatsApp (CTWA — canal não identificado)"
+            else:
+                # FIX 4: Log em vez de retorno silencioso
+                app.logger.info(
+                    f"[CAPI WA] Pedido #{order_id} | utm_content não mapeado: "
+                    f"'{utm['utm_content']}' → disparando com phone do cliente"
+                )
+                phone_number = pre_check_phone
+                channel_name = f"WhatsApp (utm_content={utm['utm_content']})"
 
     # Deduplicação interna (mesmo event_id usado em send_capi_purchase)
     event_id = order_id
